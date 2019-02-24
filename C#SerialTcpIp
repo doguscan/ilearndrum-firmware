@@ -1,0 +1,536 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Windows.Forms;
+
+using System.Net;
+using System.Net.Sockets;
+using System.IO;
+using System.IO.Ports;
+
+namespace iLD_GUI_1._2
+{
+
+    public partial class Form1 : Form
+    {
+
+
+        private static string midi_parallel_receive;
+        public string midi_parallel_send;
+
+        private TcpClient client;
+        public StreamReader STR;
+        public StreamWriter STW;
+        public string receive;
+        public string text_to_send;
+
+         
+
+        public Form1()
+        {
+            InitializeComponent();
+            getAvailablePorts();
+            getLocalIP();
+
+            serialPort1.DataReceived += new SerialDataReceivedEventHandler(serialPort1_DataReceived);
+            
+        }
+
+       
+
+        //Get Avaliable COM Ports on computer
+        void getAvailablePorts()
+        {
+            String[] ports = SerialPort.GetPortNames();
+            comboBox1.Items.AddRange(ports);
+ 
+        }
+
+        //Get your own IP
+        void getLocalIP()
+        {
+            IPAddress[] localIP = Dns.GetHostAddresses(Dns.GetHostName());
+            foreach (IPAddress adress in localIP)
+            {
+                if (adress.AddressFamily == AddressFamily.InterNetwork)
+                {
+                    textBox1.Text = adress.ToString();
+                }
+            }
+           
+        }
+
+        // Connect Button for Serial Connection
+        private void button1_Click(object sender, EventArgs e)
+        {
+            try
+            {
+
+                if (comboBox1.Text == "" )
+                {
+                    textBox3.Text = "Please select COM settings!";
+                }
+                else
+                {
+                    serialPort1.PortName = comboBox1.Text;
+                    serialPort1.BaudRate = 9600;
+                    serialPort1.Open();
+                    textBox3.Text = "";
+                    textBox3.Text = "Online!";
+
+                    button2.Enabled = true;
+                    button12.Enabled = true;
+                    button1.Enabled = false;
+                    button14.Enabled = true;
+
+                    button4.Enabled = false;
+                    button5.Enabled = true;
+                    button6.Enabled = true;
+                    button7.Enabled = true;
+                    button8.Enabled = true;
+                    button9.Enabled = true;
+                    button10.Enabled = true;
+                    button11.Enabled = true;
+                    button15.Enabled = true;
+                    button16.Enabled = true;
+
+                
+                }
+            }
+
+            catch (UnauthorizedAccessException)
+            {
+                textBox1.Text = "Unauthorized Access!!!";
+            }
+
+        }
+
+        //Disconnect Button for Serial Connection
+        private void button14_Click(object sender, EventArgs e)
+        {
+            if (serialPort1.IsOpen)
+            {
+                //Choose Exercise 1 before closing
+                serialPort1.WriteLine(Convert.ToString('0'));
+                
+                //
+                serialPort1.WriteLine(Convert.ToString('B'));
+                
+
+                serialPort1.Close();
+            }
+
+            button1.Enabled = true;
+            button14.Enabled = false;
+            button2.Enabled = false;
+            button3.Enabled = false;
+            button12.Enabled = false;
+            button13.Enabled = false;
+            textBox3.Text = "";
+            textBox3.Text = "Offline";
+
+
+            button4.Enabled = false;
+            button5.Enabled = false;
+            button6.Enabled = false;
+            button7.Enabled = false;
+            button8.Enabled = false;
+            button9.Enabled = false;
+            button10.Enabled = false;
+            button11.Enabled = false;
+            button15.Enabled = false;
+            button16.Enabled = false;
+
+            
+        }
+
+        //Start Exercise Button
+        private void button2_Click(object sender, EventArgs e)
+        {
+
+            serialPort1.WriteLine(Convert.ToString('A'));
+            
+            textBox3.Text = "START iLD Excercise!";
+
+            button2.Enabled = false;
+            button3.Enabled = true;
+            button17.Enabled = true;      
+
+        }
+
+        //Stop Exercise Button
+        private void button3_Click(object sender, EventArgs e)
+        {
+
+            serialPort1.WriteLine(Convert.ToString('B'));
+            
+            textBox3.Text = "STOP iLD Exercise!";
+
+            button2.Enabled = true;
+            button3.Enabled = false;
+            button17.Enabled = false;
+
+        }
+
+        //E1 Button to Choose Exercise 1
+        private void button4_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('0'));
+            
+            textBox3.Text = "Exercise 1!";
+
+            button4.Enabled = false;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+
+        }
+
+        //E2 Button to Choose Exercise 2
+        private void button5_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('1'));
+            
+
+            textBox3.Text = "Exercise 2!";
+
+            button4.Enabled = true;
+            button5.Enabled = false;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+        }
+
+        //E3 Button to Choose Exercise 3
+        private void button6_Click(object sender, EventArgs e)
+        {
+
+            serialPort1.WriteLine(Convert.ToString('2'));
+            
+            textBox3.Text = "Exercise 3!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = false;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+
+        }
+
+        //E4 Button to Choose Exercise 4
+        private void button7_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('3'));
+            
+            textBox3.Text = "Exercise 4!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = false;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+
+
+        }
+
+        //E5 Button to Choose Exercise 5
+        private void button8_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('4'));
+            
+
+            textBox3.Text = "Exercise 5!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = false;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+        }
+
+        //E6 Button to Choose Exercise 6
+        private void button9_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('5'));
+            
+
+            textBox3.Text = "Exercise 6!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = false;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+        }
+
+        //E7 Button to Choose Exercise 7
+        private void button10_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('6'));
+            
+            textBox3.Text = "Exercise 7!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = false;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = true;
+        }
+
+        //E8 Button to Choose Exercise 8
+        private void button11_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('7'));
+            
+            textBox3.Text = "Exercise 8!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = false;
+            button15.Enabled = true;
+            button16.Enabled = true;
+
+        }
+
+        //E9 Button to Choose Exercise 9
+        private void button15_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('8'));
+            
+            textBox3.Text = "Exercise 9!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = false;
+            button16.Enabled = true;
+        }
+
+        //E10 Button to Choose Exercise 10
+        private void button16_Click(object sender, EventArgs e)
+        {
+            serialPort1.WriteLine(Convert.ToString('9'));
+            
+
+            textBox3.Text = "Exercise 10!";
+
+            button4.Enabled = true;
+            button5.Enabled = true;
+            button6.Enabled = true;
+            button7.Enabled = true;
+            button8.Enabled = true;
+            button9.Enabled = true;
+            button10.Enabled = true;
+            button11.Enabled = true;
+            button15.Enabled = true;
+            button16.Enabled = false;
+        }
+
+
+        //Receive data TCP IP
+        private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+        {
+            while (client.Connected)
+            {
+                try 
+                {
+                    receive = STR.ReadLine();
+                    //we assume server is the teacher and the client is the student
+                    this.textBox3.Invoke(new MethodInvoker(delegate() { textBox3.AppendText("Coach Played:" + receive + "\n"); }));
+
+                    // this line sends data to serial port when any data comes over TCP
+                    //serialPort1.WriteLine(Convert.ToString(receive));
+                    //serialPort1.WriteLine(Convert.ToString(receive));
+                    
+                    receive = "";
+                }
+                catch(Exception x)
+                {
+                    MessageBox.Show(x.Message.ToString());
+                }
+            }
+        }
+
+
+        private void serialPort1_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+
+            try 
+            {
+
+                midi_parallel_receive = serialPort1.ReadExisting();
+
+                if (client != null)
+                {
+                    text_to_send = midi_parallel_receive;
+                    backgroundWorker2.RunWorkerAsync();
+                }
+
+                this.Invoke(new EventHandler(DisplayIncomingData));
+            }
+
+            catch(System.TimeoutException) 
+            { }
+           
+        }
+
+        private void DisplayIncomingData(object s, EventArgs e)
+        {
+
+
+            textBox3.AppendText("You played:" + midi_parallel_receive + "\n");
+            midi_parallel_receive = "";
+
+
+            
+        }
+
+
+        //Speed UP Button
+        private void button17_Click(object sender, EventArgs e)
+        {
+            if (radioButton1.Checked)
+            {
+                serialPort1.WriteLine(Convert.ToString('F'));
+                serialPort1.WriteLine(Convert.ToString('F'));
+               
+            }
+            else if (radioButton2.Checked)
+            {
+                serialPort1.WriteLine(Convert.ToString('M'));
+                serialPort1.WriteLine(Convert.ToString('M'));
+              
+            }
+
+            else if (radioButton3.Checked)
+            {
+                serialPort1.WriteLine(Convert.ToString('S'));
+                serialPort1.WriteLine(Convert.ToString('S'));
+               
+            }
+           
+        }
+
+
+
+
+        //Start Server Button
+        private void button18_Click_1(object sender, EventArgs e)
+        {
+            textBox3.AppendText("Server Started!" + "\n");
+            textBox3.AppendText("Waiting for Client..." + "\n");
+
+            TcpListener listener = new TcpListener(IPAddress.Any, int.Parse(textBox2.Text));
+            listener.Start();
+            client = listener.AcceptTcpClient();
+            STR = new StreamReader(client.GetStream());
+            STW = new StreamWriter(client.GetStream());
+            STW.AutoFlush = true;
+
+            textBox3.AppendText("Client Connected!"+"\n");
+
+            //Start receiving data in background
+            backgroundWorker1.RunWorkerAsync();        
+            //Ability to disable this thread
+            backgroundWorker2.WorkerSupportsCancellation = true;
+
+        }
+
+
+        //Send Data
+        private void backgroundWorker2_DoWork(object sender, DoWorkEventArgs e)
+        {
+            if (client.Connected)
+            {
+                STW.WriteLine(text_to_send);
+               // this.textBox3.Invoke(new MethodInvoker(delegate() { textBox3.AppendText("Server" + text_to_send + "\n"); }));
+            }
+
+            else
+            {
+                MessageBox.Show("Send Failed!");
+            }
+
+            backgroundWorker2.CancelAsync();
+
+        }
+
+
+        //Connect to Server Button
+        private void button19_Click(object sender, EventArgs e)
+        {
+            client = new TcpClient();
+            IPEndPoint IP_End = new IPEndPoint(IPAddress.Parse(textBox4.Text), int.Parse(textBox5.Text));
+
+            try 
+            {
+                client.Connect(IP_End);
+                if (client.Connected)
+                {
+                    textBox3.AppendText("Connected to Server" + "\n");
+                    STW = new StreamWriter(client.GetStream());
+                    STR = new StreamReader(client.GetStream());
+                    STW.AutoFlush = true;
+
+                    backgroundWorker1.RunWorkerAsync();
+                    backgroundWorker2.WorkerSupportsCancellation = true;
+                }
+
+            }
+            catch (Exception x) 
+            {
+                MessageBox.Show(x.Message.ToString());
+            }
+        }
+    }
+}
