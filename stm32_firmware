@@ -1,0 +1,2038 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////7
+
+
+/*	Brief explanation of the program: (06-10-2016) (Version 2 in the same day!)
+ *
+ *	This complete program can play drum hits in different color than iLD guide lights.
+ *
+ *
+ *
+ *
+ *
+ */
+
+
+/*-------------------------------------------------------------------
+ * Reading Analog Sensors >> ADC1 DMA MULTI READ
+ *
+ * AIN1 >> PA1 // ADC1_IN1	KICK
+ * AIN2 >> PA2 // ADC1_IN2	SNARE
+ * AIN3 >> PA3 // ADC1_IN3	HIHAT
+ *
+ * -------------------------------------------------------------------
+ * Sending Drum Notes for Parallel Working Program >> USART2
+ *
+ * USART2 RX >> PA3
+ * USART2 TX >> PA2
+ *
+ * -------------------------------------------------------------------
+ * FOR TIMING OPERATIONS
+ *
+ * TIM2 >> Array Update Timer
+ * TIM3 >> Kick Flash Timer
+ * TIM4 >> Snare Flash Timer
+ * TIM5 >> Hi-Hat Flash Timer
+ *
+ * --------------------------------------------------------------------
+ *
+ * Parallel Working Function >> USART2
+		USART2_RX >> PA3
+		USART2_TX >> PA2
+
+ * Sending MIDI Data >> USART1
+
+  	  	USART1_RX >> PB7 >> actually not used
+  	  	USART1_TX >> PB6
+ *
+ * --------------------------------------------------------------------
+ *
+ * Reading ADC data and writing them into a variable >> DMA2 Stream0 Channel0
+ *
+ * --------------------------------------------------------------------
+ *
+ * Controlling Drum Disc LEDs >> GPIOC
+
+	#define KICK_R             ((uint16_t)0x0001)  // PC 0 selected ////RED
+	#define KICK_G             ((uint16_t)0x0002)  // PC 1 selected ////GREEN
+	#define KICK_B             ((uint16_t)0x0004)  // PC 2 selected ////BLUE
+
+	#define SNARE_R            ((uint16_t)0x0040)  // PC 6 selected ////RED
+	#define SNARE_G            ((uint16_t)0x0080)  // PC 7 selected ////GREEN
+	#define SNARE_B            ((uint16_t)0x0100)  // PC 8 selected ////BLUE
+
+	#define HIHAT_R            ((uint16_t)0x0400)  // PC 10 selected ////RED
+	#define HIHAT_G            ((uint16_t)0x0800)  // PC 11 selected ////GREEN
+	#define HIHAT_B            ((uint16_t)0x1000)  // PC 12 selected ////BLUE
+
+
+ */
+
+// TIMER Structures and NVIC definitions OK
+// FLASHING FUNCTIONS OK
+// USART1 for MIDI , USART2 for Parallel Working is OK
+
+
+#define KICK				   00000001
+#define SNARE				   00000010
+#define HIHAT				   00000100
+
+#define KICK_R                 ((uint16_t)0x0001)  // PC 0 selected ////RED
+#define KICK_G                 ((uint16_t)0x0002)  // PC 1 selected ////GREEN
+#define KICK_B                 ((uint16_t)0x0004)  // PC 2 selected ////BLUE
+
+#define SNARE_R                ((uint16_t)0x0040)  // PC 6 selected ////RED
+#define SNARE_G                ((uint16_t)0x0080)  // PC 7 selected ////GREEN
+#define SNARE_B                ((uint16_t)0x0100)  // PC 8 selected ////BLUE
+
+#define HIHAT_R                ((uint16_t)0x0400)  // PC 10 selected ////RED
+#define HIHAT_G                ((uint16_t)0x0800)  // PC 11 selected ////GREEN
+#define HIHAT_B                ((uint16_t)0x1000)  // PC 12 selected ////BLUE
+
+
+
+#include "stm32f4xx.h"
+
+
+TIM_TimeBaseInitTypeDef TIM_InitStruct;
+GPIO_InitTypeDef	GPIO_InitStruct;
+GPIO_InitTypeDef	GPIOBut_InitStruct;
+USART_InitTypeDef USART_InitStruct;
+NVIC_InitTypeDef NVIC_InitStruct;
+ADC_InitTypeDef ADC_InitStruct;
+ADC_CommonInitTypeDef ADC_CommonInitStruct;
+DMA_InitTypeDef DMA_InitStruct;
+
+
+
+
+///////////////////////////////////////// EXCERCISE ARRAY DEFINITIONS ////////////////////////////////////////////////
+//																											 		//
+// 	BIT0 >> KICK, BIT1 >> SNARE, BIT2 >> HIHAT																 		//
+	uint8_t ARRAY[] = {00000101, 00000000, 00000100, 00000000, 00000110, 00000000, 00000100, 00000000};				//
+//																									//UYGAR			//
+	uint8_t E1[]={00000101, 00000000, 00000100, 00000000, 00000110, 00000000, 00000100, 00000000};	//P2_L1			//
+	uint8_t E2[]={00000101, 00000000, 00000101, 00000000, 00000110, 00000000, 00000100, 00000000};	//P2_L2			//
+//																													//
+	uint8_t E3[]={00000101, 00000000, 00000101, 00000000, 00000110, 00000000, 00000110, 00000000};	//P2_L3			//
+	uint8_t E4[]={00000101, 00000000, 00000110, 00000000, 00000100, 00000001, 00000110, 00000000};	//P2_L4			//
+//																													//
+	uint8_t E5[]={00000101, 00000000, 00000110, 00000000, 00000101, 00000001, 00000110, 00000000};	//P2_L5			//
+	uint8_t E6[]={00000101, 00000000, 00000110, 00000000, 00000101, 00000000, 00000110, 00000010};	//P2_L6			//
+//																													//
+	uint8_t E7[]={00000101, 00000000, 00000110, 00000000, 00000101, 00000001, 00000110, 00000010};	//P3_L1			//
+	uint8_t E8[]={00000101, 00000001, 00000110, 00000000, 00000100, 00000001, 00000110, 00000000};	//P3_L2			//
+//																													//
+	uint8_t E9[]={00000101, 00000000, 00000110, 00000010, 00000100, 00000001, 00000110, 00000000};	//P3_L3			//
+	uint8_t E10[]={00000101, 00000001, 00000110, 00000001, 00000101, 00000001, 00000110, 00000000};	//P4_L3			//
+//																													//
+//																													//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//---------------------------------------------------------------------------------------------------
+//Variable Definitions
+
+uint8_t cnt=0;
+
+uint8_t KickFlashEnable=RESET;
+uint8_t KickFlashEnable_User=RESET;
+
+uint8_t SnareFlashEnable=RESET;
+uint8_t SnareFlashEnable_User=RESET;
+
+uint8_t HihatFlashEnable=RESET;
+uint8_t HihatFlashEnable_User=RESET;
+
+uint16_t threshold = 0xFE;
+
+uint16_t millis;
+
+
+//---------------------------------------------------------------------------------------------------
+//Function Prototypes
+
+void KickFlash();
+void SnareFlash();
+void HihatFlash();
+void delay();
+
+//---------------------------------------------------------------------------------------------------
+
+
+int main(void)
+{
+
+
+
+/*========================================		TIMERS SETUP AND CONFIGURATION		================================================*/
+
+/*
+ * TIM2 >> Array Update
+ * TIM3 >> Kick Flash Timer  (COACH)
+ * TIM4 >> Snare Flash Timer (COACH)
+ * TIM5 >> Hihat Flash Timer (COACH)	(TIM5 is 32Bit)
+ * TIM6 >> Play_Limiter Timer (like millis of arduino)
+ *
+ * */
+
+RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2 | RCC_APB1Periph_TIM3 |
+					   RCC_APB1Periph_TIM4 | RCC_APB1Periph_TIM5 | RCC_APB1Periph_TIM6 |
+					   RCC_APB1Periph_TIM12| RCC_APB1Periph_TIM13, ENABLE);
+
+
+
+
+
+
+
+	/* TIM2 Setup == Array Update Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 600  -  1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 - 1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM2, &TIM_InitStruct);
+
+
+
+		TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM2_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM3 Setup == KICK Flash Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 290 - 1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 - 1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM3, &TIM_InitStruct);
+
+
+		TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM3_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM4 Setup == Snare Flash Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 290 -1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 -1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM4, &TIM_InitStruct);
+
+
+		TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM4_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM5 Setup == Hihat Flash Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 290 -1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 -1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM5, &TIM_InitStruct);
+
+
+		TIM_ITConfig(TIM5, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM5_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM6 == Kick USER PLAY TIMER */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 250 - 1; // the value for timer to count up to the limit
+		TIM_InitStruct.TIM_Prescaler	 = 41000 - 1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM6, &TIM_InitStruct);
+
+		TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel 	= TIM6_DAC_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd  = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM12 == Snare USER PLAY TIMER */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 250 - 1; // the value for timer to count up to the limit
+		TIM_InitStruct.TIM_Prescaler	 = 41000 - 1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM12, &TIM_InitStruct);
+
+		TIM_ITConfig(TIM12, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel 	= TIM8_BRK_TIM12_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd  = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+		/* TIM13 == Hihat USER PLAY TIMER */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 250 - 1; // the value for timer to count up to the limit
+		TIM_InitStruct.TIM_Prescaler	 = 41000 - 1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM13, &TIM_InitStruct);
+
+		TIM_ITConfig(TIM13, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel 	= TIM8_UP_TIM13_IRQn ;
+		NVIC_InitStruct.NVIC_IRQChannelCmd  = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+
+
+
+
+/*======================================		USART SETUP AND CONFIGURATION		==================================================*/
+
+/*
+ * USART2_RX >> PD6
+ * USART2_TX >> PD5
+ *
+ * USART1_RX >> PB7
+ * USART1_TX >> PB6
+*/
+// ================================== USART1 FOR MIDI ====================================//
+	//USART1 Clock Enable
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+
+	//USART1 GPIOB Clock Enable
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+
+	//USART1 Structure Configuration
+	USART_InitStruct.USART_BaudRate = 31250;
+	USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_InitStruct.USART_Parity = USART_Parity_No;
+	USART_InitStruct.USART_StopBits = USART_StopBits_1;
+	USART_InitStruct.USART_WordLength = USART_WordLength_8b;
+	USART_Init(USART1, &USART_InitStruct);
+
+	USART_Cmd(USART1, ENABLE);
+
+	//USART1 Alternating Function GPIO Structure Configuration
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_6 | GPIO_Pin_7;	// PB7 >> RX, PB6 >> TX
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed= GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	//USART1 GPIO AF Pin Selection
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource6, GPIO_AF_USART1);
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource7, GPIO_AF_USART1);
+
+// ================================== USART2 FOR PARALLEL WORKING ====================================//
+	//USART2 Clock Enable
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
+
+	//USART2 GPIOA Clock Enable
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+	//USART2 Structure Configuration
+	USART_InitStruct.USART_BaudRate = 9600;
+	USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_InitStruct.USART_Parity = USART_Parity_No;
+	USART_InitStruct.USART_StopBits = USART_StopBits_1;
+	USART_InitStruct.USART_WordLength = USART_WordLength_8b;
+	USART_Init(USART2, &USART_InitStruct);
+
+
+	//Enable USART2 Interrupt RXNE Flag
+	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+
+	// GPIO Pin Struct. Configuration
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_5 | GPIO_Pin_6;	// PD6 > RX, PD5 > TX
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed= GPIO_Speed_50MHz;
+	GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	// GPIO AF Pin Selection
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource5, GPIO_AF_USART2);
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource6, GPIO_AF_USART2);
+
+	//NVIC Setup and Configuration		*/
+	NVIC_InitStruct.NVIC_IRQChannel = USART2_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+	NVIC_Init(&NVIC_InitStruct);
+
+
+// ================================== USART3 FOR USER INTERFACE CONTROL ====================================//
+
+	//USART3 RX >> PB11
+	//USART3 TX >> PB10
+
+	//USART3 Clock Enable
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+
+	//USART3 GPIO Pins
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+	//USART3 Structure Configuration
+	USART_InitStruct.USART_BaudRate = 9600;
+	USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_InitStruct.USART_Parity = USART_Parity_No;
+	USART_InitStruct.USART_StopBits = USART_StopBits_1;
+	USART_InitStruct.USART_WordLength = USART_WordLength_8b;
+	USART_Init(USART3, &USART_InitStruct);
+
+	USART_Cmd(USART3, ENABLE);
+
+	//Enable USART3 Interrupt RXNE Flag
+	USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+
+	// GPIO Pin Struct. Configuration
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_9 | GPIO_Pin_8;	// PD8>TX, PD9>RX
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed= GPIO_Speed_50MHz;
+	GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	// GPIO AF Pin Selection
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource8, GPIO_AF_USART3);
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource9, GPIO_AF_USART3);
+
+	//NVIC Setup and Configuration		*/
+	NVIC_InitStruct.NVIC_IRQChannel = USART3_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+	NVIC_Init(&NVIC_InitStruct);
+
+
+
+/*===================================			ADC + DMA SETUP AND CONFIGURATION CODE			==================================*/
+
+uint16_t ADC1ConvertedValue[3] = {0,0,0};
+
+
+/* Enable DMA2, ADC1 and GPIOA AIN Clocks ******************************************************************/
+
+RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA2 | RCC_AHB1Periph_GPIOA, ENABLE);
+
+
+/*	DMA2 Stream0 Channel0 Configuration (For ADC1)**********************************************************/
+DMA_InitStruct.DMA_Channel = DMA_Channel_0;
+DMA_InitStruct.DMA_PeripheralBaseAddr = (uint32_t)&ADC1->DR;				//ADC1's data register
+DMA_InitStruct.DMA_Memory0BaseAddr = (uint32_t)&ADC1ConvertedValue;
+DMA_InitStruct.DMA_DIR = DMA_DIR_PeripheralToMemory;
+DMA_InitStruct.DMA_BufferSize = 3;
+DMA_InitStruct.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+DMA_InitStruct.DMA_MemoryInc = DMA_MemoryInc_Enable;
+DMA_InitStruct.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;	//Reads 16 bit values
+DMA_InitStruct.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;			//Stores 16 bit values
+DMA_InitStruct.DMA_Mode = DMA_Mode_Circular;
+DMA_InitStruct.DMA_Priority = DMA_Priority_High;
+DMA_InitStruct.DMA_FIFOMode = DMA_FIFOMode_Disable;
+DMA_InitStruct.DMA_FIFOThreshold = DMA_FIFOThreshold_HalfFull;
+DMA_InitStruct.DMA_MemoryBurst = DMA_MemoryBurst_Single;
+DMA_InitStruct.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+DMA_Init(DMA2_Stream0, &DMA_InitStruct);
+DMA_Cmd(DMA2_Stream0, ENABLE);
+
+
+/* Configure GPIO pins ******************************************************/
+GPIO_InitStruct.GPIO_Pin = GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3;				//PA1, PA2, PA3
+GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AN;										//The pins are configured in analog mode
+GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL ;									//We don't need any pull up or pull down
+GPIO_Init(GPIOA, &GPIO_InitStruct);												//Initialize GPIOC pins with the configuration
+
+
+
+/* ADC Common Init **********************************************************/
+ADC_CommonInitStruct.ADC_Mode = ADC_Mode_Independent;
+ADC_CommonInitStruct.ADC_Prescaler = ADC_Prescaler_Div2;
+ADC_CommonInitStruct.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
+ADC_CommonInitStruct.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
+ADC_CommonInit(&ADC_CommonInitStruct);
+
+/* ADC1 Init ****************************************************************/
+ADC_DeInit();
+ADC_InitStruct.ADC_Resolution = ADC_Resolution_8b;			//Input voltage is converted into a 12bit int (max 4095)
+ADC_InitStruct.ADC_ScanConvMode = ENABLE;					//The scan is configured in multiple channels
+ADC_InitStruct.ADC_ContinuousConvMode = ENABLE;				//Continuous conversion: input signal is sampled more than once
+ADC_InitStruct.ADC_ExternalTrigConv = 0;
+ADC_InitStruct.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None;
+ADC_InitStruct.ADC_DataAlign = ADC_DataAlign_Right;			//Data converted will be shifted to right
+ADC_InitStruct.ADC_NbrOfConversion = 3;
+ADC_Init(ADC1, &ADC_InitStruct);							//Initialize ADC with the configuration
+
+
+/* Select the channels to be read from **************************************/
+
+ADC_RegularChannelConfig(ADC1, ADC_Channel_1,  1, ADC_SampleTime_144Cycles);	//PA1
+ADC_RegularChannelConfig(ADC1, ADC_Channel_2,  2, ADC_SampleTime_144Cycles);	//PA2
+ADC_RegularChannelConfig(ADC1, ADC_Channel_3,  3, ADC_SampleTime_144Cycles);	//PA3
+
+/* Enable DMA request after last transfer (Single-ADC mode) */
+ADC_DMARequestAfterLastTransferCmd(ADC1, ENABLE);
+
+/* Enable ADC1 DMA */
+ADC_DMACmd(ADC1, ENABLE);
+
+/* Enable ADC1 */
+ADC_Cmd(ADC1, ENABLE);
+
+/* Start ADC1 Software Conversion */
+ADC_SoftwareStartConv(ADC1);
+
+
+
+
+
+
+/*=======================================	GPIO SETUP AND CONFIGURATION CODE	=========================		*/
+
+	//GPIOC LED Control Pins
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
+
+		GPIO_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
+		GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+		GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_6 | GPIO_Pin_7|
+									GPIO_Pin_8 | GPIO_Pin_10 | GPIO_Pin_11| GPIO_Pin_12;
+		GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_DOWN;
+		GPIO_InitStruct.GPIO_Speed= GPIO_Speed_2MHz;
+		GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+/*Pushbutton for TEST
+
+		GPIOBut_InitStruct.GPIO_Mode = GPIO_Mode_IN;
+		GPIOBut_InitStruct.GPIO_OType= GPIO_OType_PP;
+		GPIOBut_InitStruct.GPIO_Pin  = GPIO_Pin_0 ;
+		GPIOBut_InitStruct.GPIO_PuPd = GPIO_PuPd_DOWN;
+		GPIOBut_InitStruct.GPIO_Speed= GPIO_Speed_2MHz;
+		GPIO_Init(GPIOA, &GPIOBut_InitStruct);
+*/
+
+//On board LED for TEST
+		/*
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+		GPIOBut_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
+		GPIOBut_InitStruct.GPIO_OType= GPIO_OType_PP;
+		GPIOBut_InitStruct.GPIO_Pin  = GPIO_Pin_12 ;
+		GPIOBut_InitStruct.GPIO_PuPd = GPIO_PuPd_DOWN;
+		GPIOBut_InitStruct.GPIO_Speed= GPIO_Speed_2MHz;
+		GPIO_Init(GPIOD, &GPIOBut_InitStruct);
+*/
+
+
+////////////////////////////////////// END OF THE STRUCTURE DEFINITIONS AND SET UP CODES /////////////////////////////////////////////
+
+
+
+millis = TIM9->CNT;
+
+
+
+
+
+while (1)
+
+  {
+
+/*°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°° Array Read And Update Control Codes °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°*/
+	 if(KickFlashEnable) 	
+	 {
+		 KickFlash();
+		 
+	 }
+	 if(HihatFlashEnable) 
+		 {
+			 HihatFlash();
+			 }
+	 if(SnareFlashEnable) 	{SnareFlash();}
+
+/*°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°° User Drum Hit Flashing Detection Codes °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°*/
+	 	 if(KickFlashEnable_User) 	{KickFlash_U();}
+	 	 if(HihatFlashEnable_User) 	{HihatFlash_U();}
+	 	 if(SnareFlashEnable_User) 	{SnareFlash_U();}
+
+
+/*°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°° KICK-SNARE-HIHAT READ and PLAY Codes °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°*/
+
+	 /*
+	  * 0X38 >> Cow Bell
+	  * 0x39 >> Crash_2
+	  * 0x32 >> Mid-Tom
+	  * 0x31 >> Crash
+	  * 0x30 >> Lo-Tom
+	  * 0X2E >> Open-Hihat
+	  * 0x29 >> Mid-Tom
+	  * 0x28 >> Snare_Sharp
+	  * 0x27 >> Clap
+	  * 0x26 >> Clap
+	  * 0x25 >> Side Stick
+	  * 0x24 >> Kick_a
+	  * 0x23 >> Kick_b
+	  * 0x22 >> Snare_Shot/Flam
+	  */
+
+	 	 	 	 	 	 	 	 // || || || KICK READ/PLAY MIDI || || ||
+
+	 if(ADC1ConvertedValue[0] > threshold)
+	 {
+
+
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x24);
+		USART1_SendM(0x70);
+
+		USART3_SendS("K");
+		//USART2_SendP(KICK);
+
+		KickFlashEnable_User=SET;
+		delay(500000);
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x24);
+		USART1_SendM(0x00);
+}
+
+
+								// || || || SNARE READ/PLAY MIDI || || ||
+	 /*
+	  * 	0x28 >> Snare/Shot (Garage Band)
+	  * 	0x22 >> Snare (Garage Band)
+	  *  	0x51 >> Snare
+	  */
+
+
+	 if(ADC1ConvertedValue[1]> threshold)
+	 {
+
+
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x22);
+		USART1_SendM(0x70);
+
+		USART3_SendS("S");
+		//USART2_SendP(SNARE);
+
+		SnareFlashEnable_User=SET;
+
+		delay(500000);
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x22);
+		USART1_SendM(0x00);
+
+}
+
+
+								// || || || HIHAT READ/PLAY MIDI || || ||
+
+/* 	2C >> Closed Hihat_Soft (Garage Band)
+* 	2A >> Closed Hihat_Tight (Garage Band)
+* 	2F >> Open Hihat
+* 	2A >> Closed Hihat
+* 	4E >> Half-Open Hihat
+* 	2E >> Open Hihat (now it is default)
+*/
+if(ADC1ConvertedValue[2] > threshold)
+{
+
+
+				USART1_SendM(0x90);
+				USART1_SendM(0x2E);
+				USART1_SendM(0x70);
+
+				USART3_SendS("H");
+				//USART2_SendP(HIHAT);
+
+				HihatFlashEnable_User=SET;
+
+				delay(500000);
+
+				USART1_SendM(0x90);
+				USART1_SendM(0x2E);
+				USART1_SendM(0x00);
+}
+  }
+}
+
+
+
+
+void TIM2_IRQHandler(void){						//Do bitwise 'AND' operation and see if which drum disc needs to be illuminated
+	if(ARRAY[cnt] & KICK) {KickFlashEnable=SET;}
+	if(ARRAY[cnt] & SNARE) {SnareFlashEnable=SET;}
+	if(ARRAY[cnt] & HIHAT) {HihatFlashEnable=SET;}
+
+	cnt++;
+	if(cnt>7) cnt=0;
+	TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+}
+
+
+void TIM3_IRQHandler(void){						// KICK FLASH TIMER ISR		(COACH)
+	GPIO_WriteBit(GPIOC, KICK_B, Bit_RESET);
+	TIM_Cmd(TIM3, DISABLE);
+	TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
+
+}
+void TIM4_IRQHandler(void){						// SNARE FLASH TIMER ISR	(COACH)
+	GPIO_WriteBit(GPIOC, SNARE_B, Bit_RESET);
+	TIM_Cmd(TIM4, DISABLE);
+	TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
+}
+
+void TIM5_IRQHandler(void){						// HIHAT FLASH TIMER ISR	(COACH)
+	GPIO_WriteBit(GPIOC, HIHAT_B, Bit_RESET);
+	TIM_Cmd(TIM5, DISABLE);
+	TIM_ClearITPendingBit(TIM5, TIM_IT_Update);
+}
+
+
+void TIM6_DAC_IRQHandler(void)					// KICK FLASH TIMER ISR		(USER)
+{
+	GPIO_WriteBit(GPIOC, KICK_G, Bit_RESET);
+	TIM_Cmd(TIM6, DISABLE);
+	TIM_ClearITPendingBit(TIM6, TIM_IT_Update);
+}
+
+void TIM8_BRK_TIM12_IRQHandler(void)			// SNARE FLASH TIMER ISR 	(USER)
+{
+	GPIO_WriteBit(GPIOC, SNARE_G, Bit_RESET);
+	TIM_Cmd(TIM12, DISABLE);
+	TIM_ClearITPendingBit(TIM12, TIM_IT_Update);
+	}
+
+
+void TIM8_UP_TIM13_IRQHandler(void)				// HIHAT FLASH TIMER ISR	(USER)
+{
+	GPIO_WriteBit(GPIOC,HIHAT_G, Bit_RESET);
+	TIM_Cmd(TIM13, DISABLE);
+	TIM_ClearITPendingBit(TIM13, TIM_IT_Update);
+	}
+
+void KickFlash(){								// KICK FLASH START FUNCTION	(COACH)
+	KickFlashEnable = RESET;
+	GPIO_WriteBit(GPIOC, KICK_B, Bit_SET);
+	TIM_Cmd(TIM3, ENABLE);
+}
+
+void KickFlash_U(){								// KICK FLASH START FUNCTION	(USER)
+	KickFlashEnable_User = RESET;
+	GPIO_WriteBit(GPIOC, KICK_G, Bit_SET);
+	TIM_Cmd(TIM6, ENABLE);
+}
+
+void SnareFlash(){								// SNARE FLASH START FUNCTION	(COACH)
+	SnareFlashEnable = RESET;
+	GPIO_WriteBit(GPIOC, SNARE_B, Bit_SET);
+	TIM_Cmd(TIM4, ENABLE);
+}
+
+void SnareFlash_U(){							// SNARE FLASH START FUNCTION	(COACH)
+	SnareFlashEnable_User = RESET;
+	GPIO_WriteBit(GPIOC, SNARE_G, Bit_SET);
+	TIM_Cmd(TIM12, ENABLE);
+}
+
+
+void HihatFlash(){								// HIHAT FLASH START FUNCTION	(COACH)
+	HihatFlashEnable = RESET;
+	GPIO_WriteBit(GPIOC, HIHAT_B, Bit_SET);
+	TIM_Cmd(TIM5, ENABLE);
+}
+
+void HihatFlash_U(){							// HIHAT FLASH START FUNCTION	(COACH)
+	HihatFlashEnable_User = RESET;
+	GPIO_WriteBit(GPIOC, HIHAT_G, Bit_SET);
+	TIM_Cmd(TIM13, ENABLE);
+}
+
+
+
+void delay(uint32_t nCount)
+{while(nCount--){
+}
+}
+
+
+void USART1_SendM(char MIDI){							    // MIDI MESSAGE SEND FUNCTION
+	while(!(USART1->SR & 0x0040));
+	USART1->DR = (MIDI & (uint16_t)0xff);
+}
+
+void USART2_SendP(char parallel_TX){						// "PARALLEL WORKING" DATA SEND FUNCTION
+	while(!(USART2->SR & 0x040));
+	USART2->DR = (parallel_TX & (uint16_t)0xff);
+}
+/*
+void USART3_SendS(char userINT){							// "USER INTERFACE" DATA SEND FUNCTION
+	while(!(USART3->SR & 0x040));
+	USART3->DR = (userINT & (uint16_t)0xff);
+}
+*/
+
+
+void USART3_SendS(volatile char *str)
+{
+	while(*str)
+	{
+		while(USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET);
+		USART3->DR = (*str & (uint16_t)0xFF);
+		*str++;
+	}
+}
+
+
+
+/*
+uint8_t ADC_Convert(){										// ADC CONVERT FUNCTION (Without DMA)
+	while(ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == RESET);
+	return ADC_GetConversionValue(ADC1);
+}
+*/
+
+void USART2_IRQHandler(){									// "PARALLEL WORKING" DATA RECEIVE and CONTROL FUNCTION
+	if(USART_GetITStatus(USART2, USART_IT_RXNE)){
+
+	char parallel_RX = USART2->DR;
+
+		if(parallel_RX & KICK )  {KickFlashEnable=SET;}
+		if(parallel_RX & SNARE) {SnareFlashEnable=SET;}
+		if(parallel_RX & HIHAT) {HihatFlashEnable=SET;}
+	}
+}
+
+
+/*
+ * Notes for user interface data;
+ * When computer or user interface device sends a serial message on the USART3 RX port, the ISR acts and controls the embedded program.
+ * and the we made a table to control the functions, there are some binary variables which has some specific meaning that triggers the corresponding action
+ * in the program.
+ *
+ * =======================================================================
+ * START EXCERCISE >> 'A'
+ * -----------------------------
+ * STOP  EXCERCISE >> 'B'
+ * =======================================================================
+ * START PARALLEL  >> 'C'
+ * -----------------------------
+ * STOP  PARALLEL  >> 'D'
+ * =======================================================================
+ *
+ *
+ * */
+
+
+void USART3_IRQHandler()												// USER INTERFACE CONTROL ISR
+{
+
+	if(USART_GetITStatus(USART3, USART_IT_RXNE))
+{
+	char interface_RX = USART3->DR;
+
+	if(interface_RX == 'K')	{KickFlashEnable = SET;}
+
+	if(interface_RX == 'S')	{SnareFlashEnable = SET;}
+
+	if(interface_RX == 'H')	{HihatFlashEnable = SET;}
+
+
+	if(interface_RX == 'A')		{TIM_Cmd(TIM2, ENABLE);}
+
+	if(interface_RX == 'B') 	{TIM_Cmd(TIM2, DISABLE); cnt=0;}
+
+	if(interface_RX == 'C')		{USART_Cmd(USART2, ENABLE);}
+
+	if(interface_RX == 'D')		{USART_Cmd(USART2, DISABLE);}
+
+	if(interface_RX == '0')		// Exercise 1 (E1) (DEFAULT)
+	{
+			ARRAY[0] = E1[0];
+			ARRAY[1] = E1[1];
+			ARRAY[2] = E1[2];
+			ARRAY[3] = E1[3];
+			ARRAY[4] = E1[4];
+			ARRAY[5] = E1[5];
+			ARRAY[6] = E1[6];
+			ARRAY[7] = E1[7];
+	}
+
+	if(interface_RX == '1')		// Exercise 2 (E2)
+	{
+			ARRAY[0] = E2[0];
+			ARRAY[1] = E2[1];
+			ARRAY[2] = E2[2];
+			ARRAY[3] = E2[3];
+			ARRAY[4] = E2[4];
+			ARRAY[5] = E2[5];
+			ARRAY[6] = E2[6];
+			ARRAY[7] = E2[7];
+	}
+
+	if(interface_RX == '2')	 	// Exercise 3 (E3)
+	{
+			ARRAY[0] = E3[0];
+			ARRAY[1] = E3[1];
+			ARRAY[2] = E3[2];
+			ARRAY[3] = E3[3];
+			ARRAY[4] = E3[4];
+			ARRAY[5] = E3[5];
+			ARRAY[6] = E3[6];
+			ARRAY[7] = E3[7];
+	}
+
+	if(interface_RX == '3')		// Exercise 4 (E4)
+	{
+			ARRAY[0] = E4[0];
+			ARRAY[1] = E4[1];
+			ARRAY[2] = E4[2];
+			ARRAY[3] = E4[3];
+			ARRAY[4] = E4[4];
+			ARRAY[5] = E4[5];
+			ARRAY[6] = E4[6];
+			ARRAY[7] = E4[7];
+	}
+
+	if(interface_RX == '4')		// Exercise 5 (E5)
+	{
+			ARRAY[0] = E5[0];
+			ARRAY[1] = E5[1];
+			ARRAY[2] = E5[2];
+			ARRAY[3] = E5[3];
+			ARRAY[4] = E5[4];
+			ARRAY[5] = E5[5];
+			ARRAY[6] = E5[6];
+			ARRAY[7] = E5[7];
+	}
+
+	if(interface_RX == '5')		// Exercise 6 (E6)
+	{
+			ARRAY[0] = E6[0];
+			ARRAY[1] = E6[1];
+			ARRAY[2] = E6[2];
+			ARRAY[3] = E6[3];
+			ARRAY[4] = E6[4];
+			ARRAY[5] = E6[5];
+			ARRAY[6] = E6[6];
+			ARRAY[7] = E6[7];
+	}
+
+	if(interface_RX == '6')		// Exercise 7 (E7)
+		{
+			ARRAY[0] = E7[0];
+			ARRAY[1] = E7[1];
+			ARRAY[2] = E7[2];
+			ARRAY[3] = E7[3];
+			ARRAY[4] = E7[4];
+			ARRAY[5] = E7[5];
+			ARRAY[6] = E7[6];
+			ARRAY[7] = E7[7];
+		}
+
+	if(interface_RX == '7')		// Exercise 8 (E8)
+		{
+			ARRAY[0] = E8[0];
+			ARRAY[1] = E8[1];
+			ARRAY[2] = E8[2];
+			ARRAY[3] = E8[3];
+			ARRAY[4] = E8[4];
+			ARRAY[5] = E8[5];
+			ARRAY[6] = E8[6];
+			ARRAY[7] = E8[7];
+			}
+
+	if(interface_RX == '8')		// Exercise 9 (E9)
+		{
+			ARRAY[0] = E9[0];
+			ARRAY[1] = E9[1];
+			ARRAY[2] = E9[2];
+			ARRAY[3] = E9[3];
+			ARRAY[4] = E9[4];
+			ARRAY[5] = E9[5];
+			ARRAY[6] = E9[6];
+			ARRAY[7] = E9[7];
+			}
+
+	if(interface_RX == '9')		// Exercise 10 (E10)
+		{
+			ARRAY[0] = E10[0];
+			ARRAY[1] = E10[1];
+			ARRAY[2] = E10[2];
+			ARRAY[3] = E10[3];
+			ARRAY[4] = E10[4];
+			ARRAY[5] = E10[5];
+			ARRAY[6] = E10[6];
+			ARRAY[7] = E10[7];
+			}
+
+	}
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/*	Brief explanation of the program: (06-10-2016)	(this is the V2 updated over the first program of this day)
+ *
+ *	This complete program can communicate with the "ILD GUI SERIAL 1.2" !!
+ *
+ *	With the C# program, this version of the complete program can be controlled over iLD GUI 1.2, over serial USART3.
+ *
+ *	The functions that are working;
+ *	>> Exercise Start/Stop
+ *	>> Choosing different exercises  numbered from 1 to 10
+ *	>> Start/Stop for Parallel Working (Serial Parallel)
+ *
+ *
+ *
+ *
+ *
+ */
+
+
+/*-------------------------------------------------------------------
+ * Reading Analog Sensors >> ADC1 DMA MULTI READ
+ *
+ * AIN1 >> PA1 // ADC1_IN1	KICK
+ * AIN2 >> PA2 // ADC1_IN2	SNARE
+ * AIN3 >> PA3 // ADC1_IN3	HIHAT
+ *
+ * -------------------------------------------------------------------
+ * Sending Drum Notes for Parallel Working Program >> USART2
+ *
+ * USART2 RX >> PA3
+ * USART2 TX >> PA2
+ *
+ * -------------------------------------------------------------------
+ * FOR TIMING OPERATIONS
+ *
+ * TIM2 >> Array Update Timer
+ * TIM3 >> Kick Flash Timer
+ * TIM4 >> Snare Flash Timer
+ * TIM5 >> Hi-Hat Flash Timer
+ *
+ * --------------------------------------------------------------------
+ *
+ * Parallel Working Function >> USART2
+		USART2_RX >> PA3
+		USART2_TX >> PA2
+
+ * Sending MIDI Data >> USART1
+
+  	  	USART1_RX >> PB7 >> actually not used
+  	  	USART1_TX >> PB6
+ *
+ * --------------------------------------------------------------------
+ *
+ * Reading ADC data and writing them into a variable >> DMA2 Stream0 Channel0
+ *
+ * --------------------------------------------------------------------
+ *
+ * Controlling Drum Disc LEDs >> GPIOC
+
+	#define KICK_R             ((uint16_t)0x0001)  // PC 0 selected ////RED
+	#define KICK_G             ((uint16_t)0x0002)  // PC 1 selected ////GREEN
+	#define KICK_B             ((uint16_t)0x0004)  // PC 2 selected ////BLUE
+
+	#define SNARE_R            ((uint16_t)0x0040)  // PC 6 selected ////RED
+	#define SNARE_G            ((uint16_t)0x0080)  // PC 7 selected ////GREEN
+	#define SNARE_B            ((uint16_t)0x0100)  // PC 8 selected ////BLUE
+
+	#define HIHAT_R            ((uint16_t)0x0400)  // PC 10 selected ////RED
+	#define HIHAT_G            ((uint16_t)0x0800)  // PC 11 selected ////GREEN
+	#define HIHAT_B            ((uint16_t)0x1000)  // PC 12 selected ////BLUE
+
+
+ */
+
+// TIMER Structures and NVIC definitions OK
+// FLASHING FUNCTIONS OK
+// USART1 for MIDI , USART2 for Parallel Working is OK
+
+
+#define KICK				   00000001
+#define SNARE				   00000010
+#define HIHAT				   00000100
+
+#define KICK_R                 ((uint16_t)0x0001)  // PC 0 selected ////RED
+#define KICK_G                 ((uint16_t)0x0002)  // PC 1 selected ////GREEN
+#define KICK_B                 ((uint16_t)0x0004)  // PC 2 selected ////BLUE
+
+#define SNARE_R                ((uint16_t)0x0040)  // PC 6 selected ////RED
+#define SNARE_G                ((uint16_t)0x0080)  // PC 7 selected ////GREEN
+#define SNARE_B                ((uint16_t)0x0100)  // PC 8 selected ////BLUE
+
+#define HIHAT_R                ((uint16_t)0x0400)  // PC 10 selected ////RED
+#define HIHAT_G                ((uint16_t)0x0800)  // PC 11 selected ////GREEN
+#define HIHAT_B                ((uint16_t)0x1000)  // PC 12 selected ////BLUE
+
+
+
+#include "stm32f4xx.h"
+
+
+TIM_TimeBaseInitTypeDef TIM_InitStruct;
+GPIO_InitTypeDef	GPIO_InitStruct;
+GPIO_InitTypeDef	GPIOBut_InitStruct;
+USART_InitTypeDef USART_InitStruct;
+NVIC_InitTypeDef NVIC_InitStruct;
+ADC_InitTypeDef ADC_InitStruct;
+ADC_CommonInitTypeDef ADC_CommonInitStruct;
+DMA_InitTypeDef DMA_InitStruct;
+
+
+
+
+///////////////////////////////////////// EXCERCISE ARRAY DEFINITIONS ////////////////////////////////////////////////
+//																											 		//
+// 	BIT0 >> KICK, BIT1 >> SNARE, BIT2 >> HIHAT																 		//
+	uint8_t ARRAY[] = {00000101, 00000000, 00000100, 00000000, 00000110, 00000000, 00000100, 00000000};				//
+//																									//UYGAR			//
+	uint8_t E1[]={00000101, 00000000, 00000100, 00000000, 00000110, 00000000, 00000100, 00000000};	//P2_L1			//
+	uint8_t E2[]={00000101, 00000000, 00000101, 00000000, 00000110, 00000000, 00000100, 00000000};	//P2_L2			//
+//																													//
+	uint8_t E3[]={00000101, 00000000, 00000101, 00000000, 00000110, 00000000, 00000110, 00000000};	//P2_L3			//
+	uint8_t E4[]={00000101, 00000000, 00000110, 00000000, 00000100, 00000001, 00000110, 00000000};	//P2_L4			//
+//																													//
+	uint8_t E5[]={00000101, 00000000, 00000110, 00000000, 00000101, 00000001, 00000110, 00000000};	//P2_L5			//
+	uint8_t E6[]={00000101, 00000000, 00000110, 00000000, 00000101, 00000000, 00000110, 00000010};	//P2_L6			//
+//																													//
+	uint8_t E7[]={00000101, 00000000, 00000110, 00000000, 00000101, 00000001, 00000110, 00000010};	//P3_L1			//
+	uint8_t E8[]={00000101, 00000001, 00000110, 00000000, 00000100, 00000001, 00000110, 00000000};	//P3_L2			//
+//																													//
+	uint8_t E9[]={00000101, 00000000, 00000110, 00000010, 00000100, 00000001, 00000110, 00000000};	//P3_L3			//
+	uint8_t E10[]={00000101, 00000001, 00000110, 00000001, 00000101, 00000001, 00000110, 00000000};	//P4_L3			//
+//																													//
+//																													//
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//---------------------------------------------------------------------------------------------------
+//Variable Definitions
+
+uint8_t cnt=0;
+
+uint8_t KickFlashEnable=RESET;
+uint8_t KickFlashEnable_User=RESET;
+
+uint8_t SnareFlashEnable=RESET;
+uint8_t SnareFlashEnable_User=RESET;
+
+uint8_t HihatFlashEnable=RESET;
+uint8_t HihatFlashEnable_User=RESET;
+
+uint16_t threshold = 0xFE;
+
+uint16_t millis;
+
+uint32_t TIM2Prescaler= 50000;
+
+
+//---------------------------------------------------------------------------------------------------
+//Function Prototypes
+
+void KickFlash();
+void SnareFlash();
+void HihatFlash();
+void delay();
+
+//---------------------------------------------------------------------------------------------------
+
+
+int main(void)
+{
+
+
+
+/*========================================		TIMERS SETUP AND CONFIGURATION		================================================*/
+
+/*
+ * TIM2 >> Array Update
+ * TIM3 >> Kick Flash Timer  (COACH)
+ * TIM4 >> Snare Flash Timer (COACH)
+ * TIM5 >> Hihat Flash Timer (COACH)	(TIM5 is 32Bit)
+ * TIM6 >> Play_Limiter Timer (like millis of arduino)
+ *
+ * */
+
+RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2 | RCC_APB1Periph_TIM3 |
+					   RCC_APB1Periph_TIM4 | RCC_APB1Periph_TIM5 | RCC_APB1Periph_TIM6 |
+					   RCC_APB1Periph_TIM12| RCC_APB1Periph_TIM13, ENABLE);
+
+
+
+
+
+
+
+	/* TIM2 Setup == Array Update Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 1000;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 -1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM2, &TIM_InitStruct);
+
+
+
+		TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM2_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM3 Setup == KICK Flash Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 290 - 1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 - 1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM3, &TIM_InitStruct);
+
+
+		TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM3_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM4 Setup == Snare Flash Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 290 -1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 -1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM4, &TIM_InitStruct);
+
+
+		TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM4_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM5 Setup == Hihat Flash Timer */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 290 -1;
+		TIM_InitStruct.TIM_Prescaler	 = 42000 -1;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM5, &TIM_InitStruct);
+
+
+		TIM_ITConfig(TIM5, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel = TIM5_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM6 == Kick USER PLAY Flash */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 250 - 1; // the value for timer to count up to the limit
+		TIM_InitStruct.TIM_Prescaler	 = 41000 - 1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM6, &TIM_InitStruct);
+
+		TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel 	= TIM6_DAC_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd  = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+	/* TIM12 == Snare USER PLAY TIMER */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 250 - 1; // the value for timer to count up to the limit
+		TIM_InitStruct.TIM_Prescaler	 = 41000 - 1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM12, &TIM_InitStruct);
+
+		TIM_ITConfig(TIM12, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel 	= TIM8_BRK_TIM12_IRQn;
+		NVIC_InitStruct.NVIC_IRQChannelCmd  = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+		/* TIM13 == Hihat USER PLAY TIMER */
+		TIM_InitStruct.TIM_ClockDivision = TIM_CKD_DIV1;
+		TIM_InitStruct.TIM_CounterMode 	 = TIM_CounterMode_Up;
+		TIM_InitStruct.TIM_Period		 = 250 - 1; // the value for timer to count up to the limit
+		TIM_InitStruct.TIM_Prescaler	 = 41000 - 1 ;
+		TIM_InitStruct.TIM_RepetitionCounter = 0;
+		TIM_TimeBaseInit(TIM13, &TIM_InitStruct);
+
+		TIM_ITConfig(TIM13, TIM_IT_Update, ENABLE);
+
+		NVIC_InitStruct.NVIC_IRQChannel 	= TIM8_UP_TIM13_IRQn ;
+		NVIC_InitStruct.NVIC_IRQChannelCmd  = ENABLE;
+		NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+		NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+		NVIC_Init(&NVIC_InitStruct);
+
+
+
+
+
+/*======================================		USART SETUP AND CONFIGURATION		==================================================*/
+
+/*
+ * USART2_RX >> PD6
+ * USART2_TX >> PD5
+ *
+ * USART1_RX >> PB7
+ * USART1_TX >> PB6
+*/
+// ================================== USART1 FOR MIDI ====================================//
+	//USART1 Clock Enable
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+
+	//USART1 GPIOB Clock Enable
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+
+	//USART1 Structure Configuration
+	USART_InitStruct.USART_BaudRate = 31250;
+	USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_InitStruct.USART_Parity = USART_Parity_No;
+	USART_InitStruct.USART_StopBits = USART_StopBits_1;
+	USART_InitStruct.USART_WordLength = USART_WordLength_8b;
+	USART_Init(USART1, &USART_InitStruct);
+
+	USART_Cmd(USART1, ENABLE);
+
+	//USART1 Alternating Function GPIO Structure Configuration
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_6 | GPIO_Pin_7;	// PB7 >> RX, PB6 >> TX
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed= GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	//USART1 GPIO AF Pin Selection
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource6, GPIO_AF_USART1);
+	GPIO_PinAFConfig(GPIOB, GPIO_PinSource7, GPIO_AF_USART1);
+
+// ================================== USART2 FOR PARALLEL WORKING ====================================//
+	//USART2 Clock Enable
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
+
+	//USART2 GPIOA Clock Enable
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+	//USART2 Structure Configuration
+	USART_InitStruct.USART_BaudRate = 9600;
+	USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_InitStruct.USART_Parity = USART_Parity_No;
+	USART_InitStruct.USART_StopBits = USART_StopBits_1;
+	USART_InitStruct.USART_WordLength = USART_WordLength_8b;
+	USART_Init(USART2, &USART_InitStruct);
+
+
+	//Enable USART2 Interrupt RXNE Flag
+	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
+
+	// GPIO Pin Struct. Configuration
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_5 | GPIO_Pin_6;	// PD6 > RX, PD5 > TX
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed= GPIO_Speed_50MHz;
+	GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	// GPIO AF Pin Selection
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource5, GPIO_AF_USART2);
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource6, GPIO_AF_USART2);
+
+	//NVIC Setup and Configuration		*/
+	NVIC_InitStruct.NVIC_IRQChannel = USART2_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+	NVIC_Init(&NVIC_InitStruct);
+
+
+// ================================== USART3 FOR USER INTERFACE CONTROL ====================================//
+
+	//USART3 RX >> PB11
+	//USART3 TX >> PB10
+
+	//USART3 Clock Enable
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
+
+	//USART3 GPIO Pins
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+	//USART3 Structure Configuration
+	USART_InitStruct.USART_BaudRate = 9600;
+	USART_InitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+	USART_InitStruct.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+	USART_InitStruct.USART_Parity = USART_Parity_No;
+	USART_InitStruct.USART_StopBits = USART_StopBits_1;
+	USART_InitStruct.USART_WordLength = USART_WordLength_8b;
+	USART_Init(USART3, &USART_InitStruct);
+
+	USART_Cmd(USART3, ENABLE);
+
+	//Enable USART3 Interrupt RXNE Flag
+	USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+
+	// GPIO Pin Struct. Configuration
+	GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+	GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_9 | GPIO_Pin_8;	// PD8>TX, PD9>RX
+	GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_InitStruct.GPIO_Speed= GPIO_Speed_50MHz;
+	GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+	// GPIO AF Pin Selection
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource8, GPIO_AF_USART3);
+	GPIO_PinAFConfig(GPIOD, GPIO_PinSource9, GPIO_AF_USART3);
+
+	//NVIC Setup and Configuration		*/
+	NVIC_InitStruct.NVIC_IRQChannel = USART3_IRQn;
+	NVIC_InitStruct.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_InitStruct.NVIC_IRQChannelPreemptionPriority = 0;
+	NVIC_InitStruct.NVIC_IRQChannelSubPriority = 0;
+	NVIC_Init(&NVIC_InitStruct);
+
+
+
+/*===================================			ADC + DMA SETUP AND CONFIGURATION CODE			==================================*/
+
+uint16_t ADC1ConvertedValue[3] = {0,0,0};
+
+
+/* Enable DMA2, ADC1 and GPIOA AIN Clocks ******************************************************************/
+
+RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA2 | RCC_AHB1Periph_GPIOA, ENABLE);
+
+
+/*	DMA2 Stream0 Channel0 Configuration (For ADC1)**********************************************************/
+DMA_InitStruct.DMA_Channel = DMA_Channel_0;
+DMA_InitStruct.DMA_PeripheralBaseAddr = (uint32_t)&ADC1->DR;				//ADC1's data register
+DMA_InitStruct.DMA_Memory0BaseAddr = (uint32_t)&ADC1ConvertedValue;
+DMA_InitStruct.DMA_DIR = DMA_DIR_PeripheralToMemory;
+DMA_InitStruct.DMA_BufferSize = 3;
+DMA_InitStruct.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+DMA_InitStruct.DMA_MemoryInc = DMA_MemoryInc_Enable;
+DMA_InitStruct.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;	//Reads 16 bit values
+DMA_InitStruct.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;			//Stores 16 bit values
+DMA_InitStruct.DMA_Mode = DMA_Mode_Circular;
+DMA_InitStruct.DMA_Priority = DMA_Priority_High;
+DMA_InitStruct.DMA_FIFOMode = DMA_FIFOMode_Disable;
+DMA_InitStruct.DMA_FIFOThreshold = DMA_FIFOThreshold_HalfFull;
+DMA_InitStruct.DMA_MemoryBurst = DMA_MemoryBurst_Single;
+DMA_InitStruct.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+DMA_Init(DMA2_Stream0, &DMA_InitStruct);
+DMA_Cmd(DMA2_Stream0, ENABLE);
+
+
+/* Configure GPIO pins ******************************************************/
+GPIO_InitStruct.GPIO_Pin = GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_3;				//PA1, PA2, PA3
+GPIO_InitStruct.GPIO_Mode = GPIO_Mode_AN;										//The pins are configured in analog mode
+GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_NOPULL ;									//We don't need any pull up or pull down
+GPIO_Init(GPIOA, &GPIO_InitStruct);												//Initialize GPIOC pins with the configuration
+
+
+
+/* ADC Common Init **********************************************************/
+ADC_CommonInitStruct.ADC_Mode = ADC_Mode_Independent;
+ADC_CommonInitStruct.ADC_Prescaler = ADC_Prescaler_Div2;
+ADC_CommonInitStruct.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
+ADC_CommonInitStruct.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
+ADC_CommonInit(&ADC_CommonInitStruct);
+
+/* ADC1 Init ****************************************************************/
+ADC_DeInit();
+ADC_InitStruct.ADC_Resolution = ADC_Resolution_8b;			//Input voltage is converted into a 12bit int (max 4095)
+ADC_InitStruct.ADC_ScanConvMode = ENABLE;					//The scan is configured in multiple channels
+ADC_InitStruct.ADC_ContinuousConvMode = ENABLE;				//Continuous conversion: input signal is sampled more than once
+ADC_InitStruct.ADC_ExternalTrigConv = 0;
+ADC_InitStruct.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None;
+ADC_InitStruct.ADC_DataAlign = ADC_DataAlign_Right;			//Data converted will be shifted to right
+ADC_InitStruct.ADC_NbrOfConversion = 3;
+ADC_Init(ADC1, &ADC_InitStruct);							//Initialize ADC with the configuration
+
+
+/* Select the channels to be read from **************************************/
+
+ADC_RegularChannelConfig(ADC1, ADC_Channel_1,  1, ADC_SampleTime_144Cycles);	//PA1
+ADC_RegularChannelConfig(ADC1, ADC_Channel_2,  2, ADC_SampleTime_144Cycles);	//PA2
+ADC_RegularChannelConfig(ADC1, ADC_Channel_3,  3, ADC_SampleTime_144Cycles);	//PA3
+
+/* Enable DMA request after last transfer (Single-ADC mode) */
+ADC_DMARequestAfterLastTransferCmd(ADC1, ENABLE);
+
+/* Enable ADC1 DMA */
+ADC_DMACmd(ADC1, ENABLE);
+
+/* Enable ADC1 */
+ADC_Cmd(ADC1, ENABLE);
+
+/* Start ADC1 Software Conversion */
+ADC_SoftwareStartConv(ADC1);
+
+
+
+
+
+
+/*=======================================	GPIO SETUP AND CONFIGURATION CODE	=========================		*/
+
+	//GPIOC LED Control Pins
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
+
+		GPIO_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
+		GPIO_InitStruct.GPIO_OType= GPIO_OType_PP;
+		GPIO_InitStruct.GPIO_Pin  = GPIO_Pin_0 | GPIO_Pin_1 | GPIO_Pin_2 | GPIO_Pin_6 | GPIO_Pin_7|
+									GPIO_Pin_8 | GPIO_Pin_10 | GPIO_Pin_11| GPIO_Pin_12;
+		GPIO_InitStruct.GPIO_PuPd = GPIO_PuPd_DOWN;
+		GPIO_InitStruct.GPIO_Speed= GPIO_Speed_2MHz;
+		GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+
+/*
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+
+		GPIOBut_InitStruct.GPIO_Mode = GPIO_Mode_IN;
+		GPIOBut_InitStruct.GPIO_OType= GPIO_OType_PP;
+		GPIOBut_InitStruct.GPIO_Pin  = GPIO_Pin_0 ;
+		GPIOBut_InitStruct.GPIO_PuPd = GPIO_PuPd_DOWN;
+		GPIOBut_InitStruct.GPIO_Speed= GPIO_Speed_2MHz;
+		GPIO_Init(GPIOA, &GPIOBut_InitStruct);
+*/
+
+
+//On board LED for TEST
+		/*
+		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);
+
+		GPIOBut_InitStruct.GPIO_Mode = GPIO_Mode_OUT;
+		GPIOBut_InitStruct.GPIO_OType= GPIO_OType_PP;
+		GPIOBut_InitStruct.GPIO_Pin  = GPIO_Pin_12 ;
+		GPIOBut_InitStruct.GPIO_PuPd = GPIO_PuPd_DOWN;
+		GPIOBut_InitStruct.GPIO_Speed= GPIO_Speed_2MHz;
+		GPIO_Init(GPIOD, &GPIOBut_InitStruct);
+*/
+
+
+////////////////////////////////////// END OF THE STRUCTURE DEFINITIONS AND SET UP CODES /////////////////////////////////////////////
+
+
+
+millis = TIM9->CNT;
+
+
+
+
+
+while (1)
+
+  {
+
+
+		USART3_SendS("K");
+		delay(16800000);
+
+
+
+/*°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°° Array Read And Update Control Codes °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°*/
+	 if(KickFlashEnable) 	{KickFlash();}
+	 if(HihatFlashEnable) 	{HihatFlash();}
+	 if(SnareFlashEnable) 	{SnareFlash();}
+
+/*°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°° User Drum Hit Flashing Detection Codes °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°*/
+	 	 if(KickFlashEnable_User) 	{KickFlash_U();}
+	 	 if(HihatFlashEnable_User) 	{HihatFlash_U();}
+	 	 if(SnareFlashEnable_User) 	{SnareFlash_U();}
+
+
+/*°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°° KICK-SNARE-HIHAT READ and PLAY Codes °°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°°*/
+
+	 /*
+	  * 0X38 >> Cow Bell
+	  * 0x39 >> Crash_2
+	  * 0x32 >> Mid-Tom
+	  * 0x31 >> Crash
+	  * 0x30 >> Lo-Tom
+	  * 0X2E >> Open-Hihat
+	  * 0x29 >> Mid-Tom
+	  * 0x28 >> Snare_Sharp
+	  * 0x27 >> Clap
+	  * 0x26 >> Clap
+	  * 0x25 >> Side Stick
+	  * 0x24 >> Kick_a
+	  * 0x23 >> Kick_b
+	  * 0x22 >> Snare_Shot/Flam
+	  */
+
+	 	 	 	 	 	 	 	 // || || || KICK READ/PLAY MIDI || || ||
+
+	 if(ADC1ConvertedValue[0] > threshold)
+	 {
+
+
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x24);
+		USART1_SendM(0x70);
+
+		USART3_SendS("K");
+		//USART2_SendP(KICK);
+
+		KickFlashEnable_User=SET;
+		delay(50000);
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x24);
+		USART1_SendM(0x00);
+}
+
+
+								// || || || SNARE READ/PLAY MIDI || || ||
+	 /*
+	  * 	0x28 >> Snare/Shot (Garage Band)
+	  * 	0x22 >> Snare (Garage Band)
+	  *  	0x51 >> Snare
+	  */
+
+
+	 if(ADC1ConvertedValue[1]> threshold)
+	 {
+
+
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x22);
+		USART1_SendM(0x70);
+
+		USART3_SendS("S");
+		//USART2_SendP(SNARE);
+
+		SnareFlashEnable_User=SET;
+
+		delay(50000);
+
+		USART1_SendM(0x90);
+		USART1_SendM(0x22);
+		USART1_SendM(0x00);
+
+}
+
+
+								// || || || HIHAT READ/PLAY MIDI || || ||
+
+/* 	2C >> Closed Hihat_Soft (Garage Band)
+* 	2A >> Closed Hihat_Tight (Garage Band)
+* 	2F >> Open Hihat
+* 	2A >> Closed Hihat
+* 	4E >> Half-Open Hihat
+* 	2E >> Open Hihat (now it is default)
+*/
+if(ADC1ConvertedValue[2] > threshold)
+{
+
+
+				USART1_SendM(0x90);
+				USART1_SendM(0x2E);
+				USART1_SendM(0x70);
+
+				USART3_SendS("H");
+				//USART2_SendP(HIHAT);
+
+				HihatFlashEnable_User=SET;
+
+				delay(50000);
+
+				USART1_SendM(0x90);
+				USART1_SendM(0x2E);
+				USART1_SendM(0x00);
+}
+  }
+}
+
+
+
+
+void TIM2_IRQHandler(void){						//Do bitwise 'AND' operation and see if which drum disc needs to be illuminated
+	if(ARRAY[cnt] & KICK) {KickFlashEnable=SET;}
+	if(ARRAY[cnt] & SNARE) {SnareFlashEnable=SET;}
+	if(ARRAY[cnt] & HIHAT) {HihatFlashEnable=SET;}
+
+	cnt++;
+	if(cnt>7) cnt=0;
+	TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+}
+
+
+void TIM3_IRQHandler(void){						// KICK FLASH TIMER ISR		(COACH)
+	GPIO_WriteBit(GPIOC, KICK_B, Bit_RESET);
+	TIM_Cmd(TIM3, DISABLE);
+	TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
+
+}
+void TIM4_IRQHandler(void){						// SNARE FLASH TIMER ISR	(COACH)
+	GPIO_WriteBit(GPIOC, SNARE_B, Bit_RESET);
+	TIM_Cmd(TIM4, DISABLE);
+	TIM_ClearITPendingBit(TIM4, TIM_IT_Update);
+}
+
+void TIM5_IRQHandler(void){						// HIHAT FLASH TIMER ISR	(COACH)
+	GPIO_WriteBit(GPIOC, HIHAT_B, Bit_RESET);
+	TIM_Cmd(TIM5, DISABLE);
+	TIM_ClearITPendingBit(TIM5, TIM_IT_Update);
+}
+
+
+void TIM6_DAC_IRQHandler(void)					// KICK FLASH TIMER ISR		(USER)
+{
+	GPIO_WriteBit(GPIOC, KICK_G, Bit_RESET);
+	TIM_Cmd(TIM6, DISABLE);
+	TIM_ClearITPendingBit(TIM6, TIM_IT_Update);
+}
+
+void TIM8_BRK_TIM12_IRQHandler(void)			// SNARE FLASH TIMER ISR 	(USER)
+{
+	GPIO_WriteBit(GPIOC, SNARE_G, Bit_RESET);
+	TIM_Cmd(TIM12, DISABLE);
+	TIM_ClearITPendingBit(TIM12, TIM_IT_Update);
+	}
+
+
+void TIM8_UP_TIM13_IRQHandler(void)				// HIHAT FLASH TIMER ISR	(USER)
+{
+	GPIO_WriteBit(GPIOC,HIHAT_G, Bit_RESET);
+	TIM_Cmd(TIM13, DISABLE);
+	TIM_ClearITPendingBit(TIM13, TIM_IT_Update);
+	}
+
+void KickFlash(){								// KICK FLASH START FUNCTION	(COACH)
+	KickFlashEnable = RESET;
+	GPIO_WriteBit(GPIOC, KICK_B, Bit_SET);
+	TIM_Cmd(TIM3, ENABLE);
+}
+
+void KickFlash_U(){								// KICK FLASH START FUNCTION	(USER)
+	KickFlashEnable_User = RESET;
+	GPIO_WriteBit(GPIOC, KICK_G, Bit_SET);
+	TIM_Cmd(TIM6, ENABLE);
+}
+
+void SnareFlash(){								// SNARE FLASH START FUNCTION	(COACH)
+	SnareFlashEnable = RESET;
+	GPIO_WriteBit(GPIOC, SNARE_B, Bit_SET);
+	TIM_Cmd(TIM4, ENABLE);
+}
+
+void SnareFlash_U(){							// SNARE FLASH START FUNCTION	(COACH)
+	SnareFlashEnable_User = RESET;
+	GPIO_WriteBit(GPIOC, SNARE_G, Bit_SET);
+	TIM_Cmd(TIM12, ENABLE);
+}
+
+
+void HihatFlash(){								// HIHAT FLASH START FUNCTION	(COACH)
+	HihatFlashEnable = RESET;
+	GPIO_WriteBit(GPIOC, HIHAT_B, Bit_SET);
+	TIM_Cmd(TIM5, ENABLE);
+}
+
+void HihatFlash_U(){							// HIHAT FLASH START FUNCTION	(COACH)
+	HihatFlashEnable_User = RESET;
+	GPIO_WriteBit(GPIOC, HIHAT_G, Bit_SET);
+	TIM_Cmd(TIM13, ENABLE);
+}
+
+
+
+void delay(uint32_t nCount)
+{
+	while(nCount--){
+}
+}
+
+
+void USART1_SendM(char MIDI){							    // MIDI MESSAGE SEND FUNCTION
+	while(!(USART1->SR & 0x0040));
+	USART1->DR = (MIDI & (uint16_t)0xff);
+}
+
+void USART2_SendP(char parallel_TX){						// "PARALLEL WORKING" DATA SEND FUNCTION
+	while(!(USART2->SR & 0x040));
+	USART2->DR = (parallel_TX & (uint16_t)0xff);
+}
+/*
+void USART3_SendS(char userINT){							// "USER INTERFACE" DATA SEND FUNCTION
+	while(!(USART3->SR & 0x040));
+	USART3->DR = (userINT & (uint16_t)0xff);
+}
+*/
+
+
+void USART3_SendS(volatile char *str)
+{
+	while(*str)
+	{
+		while(USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET);
+		USART3->DR = (*str & (uint16_t)0xFF);
+		*str++;
+	}
+}
+
+
+
+/*
+uint8_t ADC_Convert(){										// ADC CONVERT FUNCTION (Without DMA)
+	while(ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == RESET);
+	return ADC_GetConversionValue(ADC1);
+}
+*/
+
+void USART2_IRQHandler(){									// "PARALLEL WORKING" DATA RECEIVE and CONTROL FUNCTION
+	if(USART_GetITStatus(USART2, USART_IT_RXNE)){
+
+	char parallel_RX = USART2->DR;
+
+		if(parallel_RX & KICK )  {KickFlashEnable=SET;}
+		if(parallel_RX & SNARE) {SnareFlashEnable=SET;}
+		if(parallel_RX & HIHAT) {HihatFlashEnable=SET;}
+	}
+}
+
+
+/*
+ * Notes for user interface data;
+ * When computer or user interface device sends a serial message on the USART3 RX port, the ISR acts and controls the embedded program.
+ * and the we made a table to control the functions, there are some binary variables which has some specific meaning that triggers the corresponding action
+ * in the program.
+ *
+ * =======================================================================
+ * START EXCERCISE >> 'A'
+ * -----------------------------
+ * STOP  EXCERCISE >> 'B'
+ * =======================================================================
+ * START PARALLEL  >> 'C'
+ * -----------------------------
+ * STOP  PARALLEL  >> 'D'
+ * =======================================================================
+ *
+ *
+ * */
+
+
+void USART3_IRQHandler()												// USER INTERFACE CONTROL ISR
+{
+
+	if(USART_GetITStatus(USART3, USART_IT_RXNE))
+{
+	char interface_RX = USART3->DR;
+
+	if(interface_RX == 'K')	{KickFlashEnable = SET;}
+
+	if(interface_RX == 'S')	{SnareFlashEnable = SET;}
+
+	if(interface_RX == 'H')	{HihatFlashEnable = SET;}
+
+	if(interface_RX == 'F')		//Slow (1/2)
+	{
+		TIM2->ARR = 500;
+	}
+
+	if(interface_RX == 'M')		//Medium (1/1)
+	{
+		TIM2->ARR = 800;
+	}
+
+	if(interface_RX == 'S')		//Medium (1/4)
+	{
+		TIM2->ARR = 1300;
+	}
+
+	if(interface_RX == 'A')		{TIM_Cmd(TIM2, ENABLE);}
+
+	if(interface_RX == 'B') 	{TIM_Cmd(TIM2, DISABLE); cnt=0;}
+
+	if(interface_RX == 'C')		{USART_Cmd(USART2, ENABLE);}
+
+	if(interface_RX == 'D')		{USART_Cmd(USART2, DISABLE);}
+
+	if(interface_RX == '0')		// Exercise 1 (E1) (DEFAULT)
+	{
+			ARRAY[0] = E1[0];
+			ARRAY[1] = E1[1];
+			ARRAY[2] = E1[2];
+			ARRAY[3] = E1[3];
+			ARRAY[4] = E1[4];
+			ARRAY[5] = E1[5];
+			ARRAY[6] = E1[6];
+			ARRAY[7] = E1[7];
+	}
+
+	if(interface_RX == '1')		// Exercise 2 (E2)
+	{
+			ARRAY[0] = E2[0];
+			ARRAY[1] = E2[1];
+			ARRAY[2] = E2[2];
+			ARRAY[3] = E2[3];
+			ARRAY[4] = E2[4];
+			ARRAY[5] = E2[5];
+			ARRAY[6] = E2[6];
+			ARRAY[7] = E2[7];
+	}
+
+	if(interface_RX == '2')	 	// Exercise 3 (E3)
+	{
+			ARRAY[0] = E3[0];
+			ARRAY[1] = E3[1];
+			ARRAY[2] = E3[2];
+			ARRAY[3] = E3[3];
+			ARRAY[4] = E3[4];
+			ARRAY[5] = E3[5];
+			ARRAY[6] = E3[6];
+			ARRAY[7] = E3[7];
+	}
+
+	if(interface_RX == '3')		// Exercise 4 (E4)
+	{
+			ARRAY[0] = E4[0];
+			ARRAY[1] = E4[1];
+			ARRAY[2] = E4[2];
+			ARRAY[3] = E4[3];
+			ARRAY[4] = E4[4];
+			ARRAY[5] = E4[5];
+			ARRAY[6] = E4[6];
+			ARRAY[7] = E4[7];
+	}
+
+	if(interface_RX == '4')		// Exercise 5 (E5)
+	{
+			ARRAY[0] = E5[0];
+			ARRAY[1] = E5[1];
+			ARRAY[2] = E5[2];
+			ARRAY[3] = E5[3];
+			ARRAY[4] = E5[4];
+			ARRAY[5] = E5[5];
+			ARRAY[6] = E5[6];
+			ARRAY[7] = E5[7];
+	}
+
+	if(interface_RX == '5')		// Exercise 6 (E6)
+	{
+			ARRAY[0] = E6[0];
+			ARRAY[1] = E6[1];
+			ARRAY[2] = E6[2];
+			ARRAY[3] = E6[3];
+			ARRAY[4] = E6[4];
+			ARRAY[5] = E6[5];
+			ARRAY[6] = E6[6];
+			ARRAY[7] = E6[7];
+	}
+
+	if(interface_RX == '6')		// Exercise 7 (E7)
+		{
+			ARRAY[0] = E7[0];
+			ARRAY[1] = E7[1];
+			ARRAY[2] = E7[2];
+			ARRAY[3] = E7[3];
+			ARRAY[4] = E7[4];
+			ARRAY[5] = E7[5];
+			ARRAY[6] = E7[6];
+			ARRAY[7] = E7[7];
+		}
+
+	if(interface_RX == '7')		// Exercise 8 (E8)
+		{
+			ARRAY[0] = E8[0];
+			ARRAY[1] = E8[1];
+			ARRAY[2] = E8[2];
+			ARRAY[3] = E8[3];
+			ARRAY[4] = E8[4];
+			ARRAY[5] = E8[5];
+			ARRAY[6] = E8[6];
+			ARRAY[7] = E8[7];
+			}
+
+	if(interface_RX == '8')		// Exercise 9 (E9)
+		{
+			ARRAY[0] = E9[0];
+			ARRAY[1] = E9[1];
+			ARRAY[2] = E9[2];
+			ARRAY[3] = E9[3];
+			ARRAY[4] = E9[4];
+			ARRAY[5] = E9[5];
+			ARRAY[6] = E9[6];
+			ARRAY[7] = E9[7];
+			}
+
+	if(interface_RX == '9')		// Exercise 10 (E10)
+		{
+			ARRAY[0] = E10[0];
+			ARRAY[1] = E10[1];
+			ARRAY[2] = E10[2];
+			ARRAY[3] = E10[3];
+			ARRAY[4] = E10[4];
+			ARRAY[5] = E10[5];
+			ARRAY[6] = E10[6];
+			ARRAY[7] = E10[7];
+			}
+
+	}
+
+
+}
+
+
+
+
+
+
+
